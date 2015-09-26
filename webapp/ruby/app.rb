@@ -94,7 +94,7 @@ SQL
     end
 
     def get_user_list(user_id_list)
-      user_list = db.xquery('SELECT * FROM users WHERE id IN (?)', user_id_list)
+      user_list = db.xquery('SELECT id, account_name, nick_name FROM users WHERE id IN (?)', user_id_list)
       raise Isucon5::ContentNotFound unless user_list
       user_list
     end
@@ -353,7 +353,10 @@ SQL
       friends[rel[key]] ||= rel[:created_at]
     end
     list = friends.map{|user_id, created_at| [user_id, created_at]}
-    erb :friends, locals: { friends: list }
+    user_id_list = friends.map{|user_id, created_at| user_id}
+    user_list = get_user_list(user_id_list)
+    user_hash = Hash[user_list.map{|u| [u[:id], u]}]
+    erb :friends, locals: { friends: list, user_hash: user_hash }
   end
 
   post '/friends/:account_name' do
