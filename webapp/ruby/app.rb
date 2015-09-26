@@ -214,12 +214,27 @@ SQL
     comments_for_me = db.xquery(comments_for_me_query, my_entry_ids)
 
    entries_of_friends = []
+   id_list = []
+   db.query('SELECT id,user_id FROM entries ORDER BY created_at DESC LIMIT 1000').each do |entry|
+     next unless is_friend?(entry[:user_id])
+     id_list << entry[:id]
+     break if id_list.size >= 10
+   end
+   query = 'SELECT * FROM entries WHERE id IN (?)'
+   entries_of_friends = db.xquery(query, id_list)
+   entries_of_friends.each do |entry|
+     entry[:title] = entry[:body].split(/\n/).first
+   end
+
+=begin
+   entries_of_friends = []
    db.query('SELECT * FROM entries ORDER BY created_at DESC LIMIT 1000').each do |entry|
      next unless is_friend?(entry[:user_id])
      entry[:title] = entry[:body].split(/\n/).first
      entries_of_friends << entry
      break if entries_of_friends.size >= 10
    end
+=end
 
     comments_of_friends = []
     db.query('SELECT * FROM comments ORDER BY created_at DESC LIMIT 1000').each do |comment|
@@ -405,6 +420,7 @@ SQL
   end
 
   get '/initialize' do
+    memcache.flush
     db.query("DELETE FROM relations WHERE id > 500000")
     db.query("DELETE FROM footprints WHERE id > 500000")
     db.query("DELETE FROM entries WHERE id > 500000")
