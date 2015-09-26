@@ -169,7 +169,7 @@ SQL
     entries_query = 'SELECT * FROM entries WHERE user_id = ? ORDER BY created_at LIMIT 5'
     entry_id_list = []
     entries = db.xquery(entries_query, current_user[:id])
-      .map{ |entry| entry_id_list << entry[id]; entry[entry[:is_private] = (entry[:private] == 1); entry[:title], entry[:content] = entry[:body].split(/\n/, 2); entry }
+      .map{ |entry| entry_id_list << entry[:id]; entry[:is_private] = (entry[:private] == 1); entry[:title], entry[:content] = entry[:body].split(/\n/, 2); entry }
     comments_for_me_query = "SELECT id, entry_id, user_id, comment, created_at FROM comments where entry_id in (?)"
     comments_for_me = db.xquery(comments_for_me_query, entry_id_list.join(','))
 
