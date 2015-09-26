@@ -3,6 +3,7 @@ require 'mysql2'
 require 'mysql2-cs-bind'
 require 'tilt/erubis'
 require 'erubis'
+require 'dalli'
 
 module Isucon5
   class AuthenticationError < StandardError; end
@@ -49,6 +50,14 @@ class Isucon5::WebApp < Sinatra::Base
       )
       client.query_options.merge!(symbolize_keys: true)
       Thread.current[:isucon5_db] = client
+      client
+    end
+
+    def memcache
+      return Thread.current[:isucon5_memcache] if Thread.current[:isucon5_memcache]
+      options = { :namespace => "isucon", :compress => true }
+      client = Dalli::Client.new('localhost:11211', options)
+      Thread.current[:isucon5_memcache] = client
       client
     end
 
@@ -99,6 +108,25 @@ SQL
       user_list
     end
 
+    def get_friend_ids(user_id)
+      key = "f_ids_#{user_id}"
+      cached_friend_ids = memcache.get(key)
+      return cached_friend_ids if cached_friend_ids
+      friends_query = 'SELECT another FROM relations WHERE one = ? ORDER BY created_at DESC'
+      user_friend_ids = db.xquery(friends_query, user_id).map{ |friend| friend[:another] }
+      memcache.set(key, user_friend_ids)
+      user_friend_ids
+    end
+
+    def clear_friend_ids_cache(user_id)
+      key = "f_ids_#{user_id}"
+      memcache.delete(key)
+    end
+
+    def get_my_friend_ids
+      get_friend_ids(current_user[:id])
+    end
+
     def user_from_account(account_name)
       user = db.xquery('SELECT * FROM users WHERE account_name = ?', account_name).first
       raise Isucon5::ContentNotFound unless user
@@ -106,10 +134,14 @@ SQL
     end
 
     def is_friend?(another_id)
+      my_friend_ids = get_my_friend_ids()
+      my_friend_ids.include?(another_id)
+=begin
       user_id = session[:user_id]
       query = 'SELECT COUNT(1) AS cnt FROM relations WHERE (one = ? AND another = ?) OR (one = ? AND another = ?)'
       cnt = db.xquery(query, user_id, another_id, another_id, user_id).first[:cnt]
       cnt.to_i > 0 ? true : false
+=end
     end
 
     def is_friend_account?(account_name)
@@ -189,13 +221,6 @@ SQL
      break if entries_of_friends.size >= 10
    end
 
-   friends_query = 'SELECT * FROM relations WHERE one = ? ORDER BY created_at DESC'
-   my_friends = db.xquery(friends_query, current_user[:id]);
-=begin
-    my_friend_ids = my_friends.map {|friend| friend[:id]}
-    entries_of_friends = db.xquery('SELECT * FROM entries where user_id in (?) ORDER BY created_at DESC LIMIT 10', my_friend_ids).map{|entry| entry[:title] = entry[:body].split(/\n/).first; entry }
-=end
-
     comments_of_friends = []
     db.query('SELECT * FROM comments ORDER BY created_at DESC LIMIT 1000').each do |comment|
       next unless is_friend?(comment[:user_id])
@@ -206,12 +231,17 @@ SQL
       break if comments_of_friends.size >= 10
     end
 
+=begin
+    friends_query = 'SELECT * FROM relations WHERE one = ? ORDER BY created_at DESC'
+    my_friends = db.xquery(friends_query, current_user[:id]);
     friends_map = {}
     my_friends.each do |rel|
       key = (rel[:one] == current_user[:id] ? :another : :one)
       friends_map[rel[key]] ||= rel[:created_at]
     end
     friends = friends_map.map{|user_id, created_at| [user_id, created_at]}
+=end
+    friends = get_my_friend_ids()
 
     query = <<SQL
 SELECT user_id, owner_id, DATE(created_at) AS date, MAX(created_at) AS updated
@@ -225,7 +255,7 @@ SQL
 
     locals = {
       profile: profile || {},
-      entries: my_entries[0..4],
+      entries: my_entries,
       comments_for_me: comments_for_me,
       entries_of_friends: entries_of_friends,
       comments_of_friends: comments_of_friends,
@@ -368,6 +398,8 @@ SQL
         raise Isucon5::ContentNotFound
       end
       db.xquery('INSERT INTO relations (one, another) VALUES (?,?), (?,?)', current_user[:id], user[:id], user[:id], current_user[:id])
+      clear_friend_ids_cache(current_user[:id])
+      clear_friend_ids_cache(user[:id])
       redirect '/friends'
     end
   end
