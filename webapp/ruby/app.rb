@@ -166,20 +166,17 @@ SQL
 
     profile = db.xquery('SELECT * FROM profiles WHERE user_id = ?', current_user[:id]).first
 
-    entries_query = 'SELECT * FROM entries WHERE user_id = ? ORDER BY created_at LIMIT 5'
-    entry_id_list = []
-    entries = db.xquery(entries_query, current_user[:id])
-      .map{ |entry| entry_id_list << entry[:id]; entry[:is_private] = (entry[:private] == 1); entry[:title], entry[:content] = entry[:body].split(/\n/, 2); entry }
-    comments_for_me_query = "SELECT id, entry_id, user_id, comment, created_at FROM comments where entry_id in (?)"
-    comments_for_me = db.xquery(comments_for_me_query, entry_id_list.join(','))
+    entries_query = 'SELECT * FROM entries WHERE user_id = ? ORDER BY created_at'
+    my_entry_ids = []
+    my_entries = db.xquery(entries_query, current_user[:id])
+      .map{ |entry| my_entry_ids << entry[:id]; entry[:is_private] = (entry[:private] == 1); entry[:title], entry[:content] = entry[:body].split(/\n/, 2); entry }
+    comments_for_me_query = "SELECT id, entry_id, user_id, comment, created_at FROM comments WHERE entry_id IN (?) ORDER BY created_at DESC LIMIT 10"
+    comments_for_me = db.xquery(comments_for_me_query, my_entry_ids.join(','))
 
-    entries_of_friends = []
-    db.query('SELECT * FROM entries ORDER BY created_at DESC LIMIT 1000').each do |entry|
-      next unless is_friend?(entry[:user_id])
-      entry[:title] = entry[:body].split(/\n/).first
-      entries_of_friends << entry
-      break if entries_of_friends.size >= 10
-    end
+    friends_query = 'SELECT * FROM relations WHERE one = ? ORDER BY created_at DESC'
+    my_friends = db.xquery(friends_query, current_user[:id]);
+    my_friend_ids = my_friends.map {|friend| friend[:id]}
+    entries_of_friends = db.query('SELECT * FROM entries where user_id in (?) ORDER BY created_at DESC LIMIT 10', my_friend_ids.join(',')).map{|entry| entry[:title] = entry[:body].split(/\n/).first; entry }
 
     comments_of_friends = []
     db.query('SELECT * FROM comments ORDER BY created_at DESC LIMIT 1000').each do |comment|
@@ -191,9 +188,8 @@ SQL
       break if comments_of_friends.size >= 10
     end
 
-    friends_query = 'SELECT * FROM relations WHERE one = ? OR another = ? ORDER BY created_at DESC'
     friends_map = {}
-    db.xquery(friends_query, current_user[:id], current_user[:id]).each do |rel|
+    my_friends.each do |rel|
       key = (rel[:one] == current_user[:id] ? :another : :one)
       friends_map[rel[key]] ||= rel[:created_at]
     end
@@ -211,7 +207,7 @@ SQL
 
     locals = {
       profile: profile || {},
-      entries: entries,
+      entries: my_entries[0..4],
       comments_for_me: comments_for_me,
       entries_of_friends: entries_of_friends,
       comments_of_friends: comments_of_friends,
