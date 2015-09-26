@@ -93,6 +93,12 @@ SQL
       user
     end
 
+    def get_user_list(user_id_list)
+      user_list = db.xquery('SELECT * FROM users WHERE id IN (?)', user_id_list)
+      raise Isucon5::ContentNotFound unless user_list
+      user_list
+    end
+
     def user_from_account(account_name)
       user = db.xquery('SELECT * FROM users WHERE account_name = ?', account_name).first
       raise Isucon5::ContentNotFound unless user
@@ -332,7 +338,10 @@ ORDER BY updated DESC
 LIMIT 50
 SQL
     footprints = db.xquery(query, current_user[:id])
-    erb :footprints, locals: { footprints: footprints }
+    user_id_list = footprints.map{|f|f[:owner_id]}
+    user_list = get_user_list(user_id_list)
+    user_hash = Hash[user_list.map{|u| [u[:id], u]}]
+    erb :footprints, locals: { footprints: footprints, user_hash: user_hash }
   end
 
   get '/friends' do
