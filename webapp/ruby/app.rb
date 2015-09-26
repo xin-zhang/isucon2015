@@ -167,18 +167,11 @@ SQL
     profile = db.xquery('SELECT * FROM profiles WHERE user_id = ?', current_user[:id]).first
 
     entries_query = 'SELECT * FROM entries WHERE user_id = ? ORDER BY created_at LIMIT 5'
+    entry_id_list = []
     entries = db.xquery(entries_query, current_user[:id])
-      .map{ |entry| entry[:is_private] = (entry[:private] == 1); entry[:title], entry[:content] = entry[:body].split(/\n/, 2); entry }
-
-    comments_for_me_query = <<SQL
-SELECT c.id AS id, c.entry_id AS entry_id, c.user_id AS user_id, c.comment AS comment, c.created_at AS created_at
-FROM comments c
-JOIN entries e ON c.entry_id = e.id
-WHERE e.user_id = ?
-ORDER BY c.created_at DESC
-LIMIT 10
-SQL
-    comments_for_me = db.xquery(comments_for_me_query, current_user[:id])
+      .map{ |entry| entry_id_list << entry[id]; entry[entry[:is_private] = (entry[:private] == 1); entry[:title], entry[:content] = entry[:body].split(/\n/, 2); entry }
+    comments_for_me_query = "SELECT id, entry_id, user_id, comment, created_at FROM comments where entry_id in (?)"
+    comments_for_me = db.xquery(comments_for_me_query, entry_id_list.join(','))
 
     entries_of_friends = []
     db.query('SELECT * FROM entries ORDER BY created_at DESC LIMIT 1000').each do |entry|
