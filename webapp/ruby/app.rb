@@ -170,7 +170,7 @@ SQL
     end
 
     def get_comment_counts_of_entries(entry_id_list)
-      query = 'SELECT entry_id, COUNT(*) AS cnt FROM comments WHERE entry_id IN (?)'
+      query = 'SELECT entry_id, COUNT(*) AS cnt FROM comments WHERE entry_id IN (?) GROUP BY entry_id'
       db.xquery(query, entry_id_list)
     end
 
