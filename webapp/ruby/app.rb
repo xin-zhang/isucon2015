@@ -169,6 +169,11 @@ SQL
       end
     end
 
+    def get_comment_counts_of_entries(entry_id_list)
+      query = 'SELECT entry_id, COUNT(*) AS cnt FROM comments WHERE entry_id IN (?)'
+      db.xquery(query, entry_id_list)
+    end
+
     PREFS = %w(
       未入力
       北海道 青森県 岩手県 宮城県 秋田県 山形県 福島県 茨城県 栃木県 群馬県 埼玉県 千葉県 東京都 神奈川県 新潟県 富山県
@@ -342,7 +347,10 @@ SQL
     entries = db.xquery(query, owner[:id])
       .map{ |entry| entry[:is_private] = (entry[:private] == 1); entry[:title], entry[:content] = entry[:body].split(/\n/, 2); entry }
     mark_footprint(owner[:id])
-    erb :entries, locals: { owner: owner, entries: entries, myself: (current_user[:id] == owner[:id]) }
+    entry_id_list = entries.map{|entry| entry[:id]}
+    comment_counts_list = get_comment_counts_of_entries(entry_id_list)
+    comment_counts_hash = Hash[comment_counts_list.map{|count| [count[:entry_id], count[:cnt]]}]
+    erb :entries, locals: { owner: owner, entries: entries, myself: (current_user[:id] == owner[:id]), comment_counts_hash: comment_counts_hash }
   end
 
   get '/diary/entry/:entry_id' do
@@ -356,8 +364,11 @@ SQL
       raise Isucon5::PermissionDenied
     end
     comments = db.xquery('SELECT * FROM comments WHERE entry_id = ?', entry[:id])
+    comment_user_id_list = comments.map{|comment| comment[:user_id]}
+    comment_user_list = get_user_list(comment_user_id_list)
+    comment_user_hash = Hash[comment_user_list.map{|user| [user[:id], user]}]
     mark_footprint(owner[:id])
-    erb :entry, locals: { owner: owner, entry: entry, comments: comments }
+    erb :entry, locals: { owner: owner, entry: entry, comments: comments, comment_user_hash: comment_user_hash }
   end
 
   post '/diary/entry' do
